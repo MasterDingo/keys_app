@@ -1,0 +1,217 @@
+{% load bootstrap4 %}
+{% load i18n %}
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>{% trans "Test task by V.Derbentsev" %}</title>
+    {% bootstrap_css %}
+    <style>
+    .hidden {
+      display: none;
+    }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      {% bootstrap_messages %}
+
+      {% bootstrap_button "Количество свободных ключей" button_class="btn-info" extra_classes="keys_count" %}
+      {% bootstrap_button "Получить ключ" button_class="btn-primary" extra_classes="acquire_key" %}
+      {% bootstrap_button "Проверить ключ" button_class="btn-info" extra_classes="check_key" %}
+      {% bootstrap_button "Использовать ключ" button_class="btn-primary" extra_classes="activate_key" %}
+      {% bootstrap_button "Генерировать ключ" button_class="btn-danger" extra_classes="generate_key" %}
+      {% bootstrap_button "Генерировать ключи" button_class="btn-danger" extra_classes="generate_keys" %}
+      <p id="message-box"></p>
+
+      <div class="hidden" id="input_panel">
+        <form>
+          <div class="form-group">
+            <label for="key_input" class="title">Key</label>
+            <input class="form-control" id="key_input">
+          </div>
+          <button type="submit" href="#" class="btn btn-primary">Отправить</button>
+        </form>
+      </div>
+    </div>
+
+    {% bootstrap_javascript jquery='full' %}
+    <script>
+    (function() {
+      if (!Array.isArray) {
+        Array.isArray = function(arg) {
+          return Object.prototype.toString.call(arg) === '[object Array]';
+        };
+      }
+
+      var keys_count = $(".keys_count");
+      var acquire_key = $(".acquire_key");
+      var check_key = $(".check_key");
+      var activate_key = $(".activate_key");
+      var generate_key = $(".generate_key");
+      var generate_keys = $(".generate_keys");
+
+      var panel_form = $("#input_panel form");
+      var input_panel = $("#input_panel");
+      var key_input = $("#key_input");
+      var panel_title = $("#input_panel .title");
+
+      var showPanel = function(callback, title) {
+        panel_form.off("submit");
+        if(!title) {
+          title = "{% trans "Key" %}";
+        }
+        panel_form.on("submit", function(e) {
+          e.preventDefault();
+          var input = key_input.val();
+          input_panel.hide();
+          callback(input);
+        })
+        key_input.val('');
+        panel_title.text(title);
+        input_panel.show();
+      }
+
+      var addMessage = function(msg) {
+        var msg_box = $("#message-box");
+        var messages = msg_box.html();
+        msg_box.html(messages+"<br>\n"+msg);
+      }
+
+      var readCookie = function(name) {
+            var nameEQ = name + "=";
+            var ca = document.cookie.split(';');
+            for (var i = 0; i < ca.length; i++) {
+                var c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+      var show_alert = function(msg, title, type) {
+        if(!type) {
+          type = 'info'
+        }
+
+        if(!title) {
+          title = 'Info';
+        }
+
+        var code = '<div class="alert alert-'+type+' alert-dismissible fade show" role="alert">'+
+        '<h4 class="alert-heading">'+title+'</h4>'+
+  '<p>'+msg+'</p>'+
+  '<button type="button" class="close" data-dismiss="alert" aria-label="Close">'+
+    '<span aria-hidden="true">&times;</span>'+
+  '</button>'+
+'</div>';
+          var obj = $(code);
+          $('body >.container').append(obj);
+          setTimeout(function(){
+            obj.alert('close');
+          }, 5000);
+      }
+
+      var get_response_data = function(data) {
+        if(data['status'] == 'ok') {
+          if('message' in data) {
+            show_alert(data["message"], "{% trans "Message" %}", "success");
+          }
+          return data['data'];
+        } else {
+          show_alert(data["message"], "{% trans "Error" %}", "danger");
+        }
+        return undefined;
+      }
+
+      var api = function(path, params) {
+        if(params && !Array.isArray(params)) {
+          params = [params];
+        }
+        if(params) {
+          params = params.join('/') + '/';
+        } else {
+          params = '';
+        }
+        return '/api/' + params + path + '/';
+      }
+
+      var API = new Object();
+      API.generate = function() {
+        $.post(api('generate'))
+        .done(function(data) {
+          show_alert(get_response_data(data));
+        });
+      };
+      API.bulk_generate = function(count) {
+        $.post(api('bulk_generate'), {"count": count})
+        .done(function(data) {
+          show_alert("{% trans "Keys generated" %}");
+        });
+      };
+      API.acquire = function() {
+        $.get(api('acquire'))
+        .done(function(data) {
+          var key = get_response_data(data);
+          if(key) {
+            addMessage(key);
+            show_alert(key);
+          }
+        });
+      };
+      API.count = function() {
+        $.get(api('count'))
+        .done(function(data) {
+          show_alert(get_response_data(data));
+        });
+      };
+      API.status = function(key) {
+        $.get(api('status', key))
+        .done(function(data) {
+          get_response_data(data);
+        });
+      };
+      API.activate = function(key) {
+        $.post(api('activate'), {'symbols': key})
+        .done(function(data) {
+          get_response_data(data);
+        });
+      };
+
+      var csrfSafeMethod = function(method) {
+        return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+      }
+
+      $(document).ajaxError(function(e, request) {
+        var status = request.status;
+        if(status == 403) {
+          show_alert("{% trans "You have no permission for it" %}", "{% trans "Error" %}", "danger");
+        } else if (status == 400) {
+          show_alert("{% trans "Invalid request" %}", "{% trans "Error" %}", "danger");
+        }
+      });
+
+      keys_count.on("click", API.count);
+      acquire_key.on("click", API.acquire);
+      check_key.on("click", function() {
+        showPanel(function(key) {
+          API.status(key);
+        });
+      });
+      activate_key.on("click", function() {
+        showPanel(function(key) {
+          API.activate(key);
+        });
+      });
+
+      generate_key.on("click", API.generate);
+      generate_keys.on("click", function() {
+        showPanel(function(count) {
+          API.bulk_generate(parseInt(count));
+        }, "{% trans "Keys number" %}");
+      });
+
+    })();
+    </script>
+  </body>
+</html>
